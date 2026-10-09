@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/_Oqtane/" />
+  <Project Path="Client\GIBS.Module.IPGuard.Client.csproj" />
+  <Project Path="Server\GIBS.Module.IPGuard.Server.csproj" />
+  <Project Path="Shared\GIBS.Module.IPGuard.Shared.csproj" />
+  <Project Path="Package\GIBS.Module.IPGuard.Package.csproj" />
+</Solution>

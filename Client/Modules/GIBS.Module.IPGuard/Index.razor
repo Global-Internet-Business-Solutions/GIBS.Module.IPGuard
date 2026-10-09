@@ -1,0 +1,79 @@
+@using GIBS.Module.IPGuard.Services
+@using GIBS.Module.IPGuard.Models
+
+@namespace GIBS.Module.IPGuard
+@inherits ModuleBase
+@inject IIPGuardService ClientIPGuardService
+@inject NavigationManager NavigationManager
+@inject IStringLocalizer<Index> Localizer
+
+@if (_IPGuards == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <ActionLink Action="Add" Security="SecurityAccessLevel.Edit" Text="Add IPGuard" ResourceKey="Add" />
+    <br />
+    <br />
+    @if (@_IPGuards.Count != 0)
+    {
+        <Pager Items="@_IPGuards">
+            <Header>
+                <th style="width: 1px;">&nbsp;</th>
+                <th style="width: 1px;">&nbsp;</th>
+                <th>@Localizer["Name"]</th>
+            </Header>
+            <Row>
+                <td><ActionLink Action="Edit" Parameters="@($"id=" + context.IPGuardId.ToString())" ResourceKey="Edit"  /></td>
+                <td><ActionDialog Header="Delete IPGuard" Message="Are You Sure You Wish To Delete This IPGuard?" Action="Delete" Security="SecurityAccessLevel.Edit" Class="btn btn-danger" OnClick="@(async () => await Delete(context))" ResourceKey="Delete"  Id="@context.IPGuardId.ToString()" /></td>
+                <td>@context.Name</td>
+            </Row>
+        </Pager>
+    }
+    else
+    {
+        <p>@Localizer["Message.DisplayNone"]</p>
+    }
+}
+
+@code {
+    public override string RenderMode => RenderModes.Static;
+
+    public override List<Resource> Resources => new List<Resource>()
+    {
+        new Stylesheet("_content/GIBS.Module.IPGuard/Module.css"),
+        new Script("_content/GIBS.Module.IPGuard/Module.js")
+    };
+
+    List<IPGuard> _IPGuards;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _IPGuards = await ClientIPGuardService.GetIPGuardsAsync(ModuleState.ModuleId);
+        }
+        catch (Exception ex)
+        {
+            await logger.LogError(ex, "Error Loading IPGuard {Error}", ex.Message);
+            AddModuleMessage(Localizer["Message.LoadError"], MessageType.Error);
+        }
+    }
+
+    private async Task Delete(IPGuard IPGuard)
+    {
+        try
+        {
+            await ClientIPGuardService.DeleteIPGuardAsync(IPGuard.IPGuardId, ModuleState.ModuleId);
+            await logger.LogInformation("IPGuard Deleted {IPGuard}", IPGuard);
+            _IPGuards = await ClientIPGuardService.GetIPGuardsAsync(ModuleState.ModuleId);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await logger.LogError(ex, "Error Deleting IPGuard {IPGuard} {Error}", IPGuard, ex.Message);
+            AddModuleMessage(Localizer["Message.DeleteError"], MessageType.Error);
+        }
+    }
+}
