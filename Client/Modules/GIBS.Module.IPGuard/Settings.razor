@@ -2,29 +2,37 @@
 @inherits ModuleBase
 @implements Oqtane.Interfaces.ISettingsControl
 @inject ISettingService SettingService
-@inject IStringLocalizer<Settings> Localizer
 
 <div class="container">
     <div class="row mb-1 align-items-center">
-        <Label Class="col-sm-3" For="value" HelpText="Enter a value" ResourceKey="SettingName" ResourceType="@resourceType">Name: </Label>
-            <div class="col-sm-9">
-                <input id="value" type="text" class="form-control" @bind="@_value" />
-            </div>
+        <Label Class="col-sm-3" For="threshold" HelpText="Number of 404 attempts within an hour before an IP address is blocked.">404 Threshold:</Label>
+        <div class="col-sm-9">
+            <input id="threshold" type="number" min="1" class="form-control" @bind="@_threshold" />
+        </div>
+    </div>
+    <div class="row mb-1 align-items-center">
+        <Label Class="col-sm-3" For="allowedIpAddresses" HelpText="Comma separated list of IP addresses which should never be blocked.">Allowed IP Addresses:</Label>
+        <div class="col-sm-9">
+            <textarea id="allowedIpAddresses" class="form-control" rows="3" @bind="@_allowedIpAddresses"></textarea>
+        </div>
     </div>
 </div>
 
 @code {
-    private string resourceType = "GIBS.Module.IPGuard.Settings, GIBS.Module.IPGuard.Client.Oqtane"; // for localization
     public override string Title => "IPGuard Settings";
 
-    string _value;
+    private int _threshold = IPGuardSettings.DefaultThreshold;
+    private string _allowedIpAddresses;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            Dictionary<string, string> settings = await SettingService.GetModuleSettingsAsync(ModuleState.ModuleId);
-            _value = SettingService.GetSetting(settings, "SettingName", "");
+            Dictionary<string, string> settings = await SettingService.GetSiteSettingsAsync(PageState.Site.SiteId);
+            _threshold = int.TryParse(SettingService.GetSetting(settings, IPGuardSettings.ThresholdSettingName, IPGuardSettings.DefaultThreshold.ToString()), out var threshold) && threshold > 0
+                ? threshold
+                : IPGuardSettings.DefaultThreshold;
+            _allowedIpAddresses = SettingService.GetSetting(settings, IPGuardSettings.AllowedIpAddressSettingName, string.Empty);
         }
         catch (Exception ex)
         {
@@ -36,9 +44,15 @@
     {
         try
         {
-            var settings = await SettingService.GetModuleSettingsAsync(ModuleState.ModuleId);
-            settings = SettingService.SetSetting(settings, "SettingName", _value);
-            await SettingService.UpdateModuleSettingsAsync(settings, ModuleState.ModuleId);
+            if (_threshold < 1)
+            {
+                _threshold = IPGuardSettings.DefaultThreshold;
+            }
+
+            var settings = await SettingService.GetSiteSettingsAsync(PageState.Site.SiteId);
+            settings = SettingService.SetSetting(settings, IPGuardSettings.ThresholdSettingName, _threshold.ToString());
+            settings = SettingService.SetSetting(settings, IPGuardSettings.AllowedIpAddressSettingName, _allowedIpAddresses?.Trim() ?? string.Empty);
+            await SettingService.UpdateSiteSettingsAsync(settings, PageState.Site.SiteId);
         }
         catch (Exception ex)
         {

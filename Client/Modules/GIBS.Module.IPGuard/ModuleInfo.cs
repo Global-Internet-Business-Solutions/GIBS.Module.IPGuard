@@ -9,9 +9,9 @@ namespace GIBS.Module.IPGuard
         {
             Name = "IPGuard",
             Description = "Automated IP blocking mechanism based on 404 errors",
-            Version = "1.0.0",
+            Version = "1.0.1",
             ServerManagerType = "GIBS.Module.IPGuard.Manager.IPGuardManager, GIBS.Module.IPGuard.Server.Oqtane",
-            ReleaseVersions = "1.0.0",
+            ReleaseVersions = "1.0.0,1.0.1",
             Dependencies = "GIBS.Module.IPGuard.Shared.Oqtane",
             PackageName = "GIBS.Module.IPGuard" 
         };

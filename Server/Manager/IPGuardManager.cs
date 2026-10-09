@@ -2,14 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
-using Oqtane.Modules;
-using Oqtane.Models;
+using System.Threading.Tasks;
+using GIBS.Module.IPGuard.Repository;
+using Oqtane.Enums;
 using Oqtane.Infrastructure;
 using Oqtane.Interfaces;
-using Oqtane.Enums;
+using Oqtane.Models;
+using Oqtane.Modules;
 using Oqtane.Repository;
-using GIBS.Module.IPGuard.Repository;
-using System.Threading.Tasks;
 
 namespace GIBS.Module.IPGuard.Manager
 {
@@ -36,52 +36,55 @@ namespace GIBS.Module.IPGuard.Manager
 
         public string ExportModule(Oqtane.Models.Module module)
         {
-            string content = "";
-            List<Models.IPGuard> IPGuards = _IPGuardRepository.GetIPGuards(module.ModuleId).ToList();
-            if (IPGuards != null)
-            {
-                content = JsonSerializer.Serialize(IPGuards);
-            }
-            return content;
+            var blockedIps = _IPGuardRepository.GetBlockedIps().ToList();
+            return blockedIps.Count > 0 ? JsonSerializer.Serialize(blockedIps) : string.Empty;
         }
 
         public void ImportModule(Oqtane.Models.Module module, string content, string version)
         {
-            List<Models.IPGuard> IPGuards = null;
+            List<Models.BlockedIp> blockedIps = null;
             if (!string.IsNullOrEmpty(content))
             {
-                IPGuards = JsonSerializer.Deserialize<List<Models.IPGuard>>(content);
+                blockedIps = JsonSerializer.Deserialize<List<Models.BlockedIp>>(content);
             }
-            if (IPGuards != null)
+
+            if (blockedIps != null)
             {
-                foreach(var IPGuard in IPGuards)
+                foreach (var blockedIp in blockedIps)
                 {
-                    _IPGuardRepository.AddIPGuard(new Models.IPGuard { ModuleId = module.ModuleId, Name = IPGuard.Name });
+                    _IPGuardRepository.AddBlockedIp(new Models.BlockedIp
+                    {
+                        IpAddress = blockedIp.IpAddress,
+                        CountryLookup = blockedIp.CountryLookup,
+                        ErrorCount = blockedIp.ErrorCount,
+                        BlockedDate = blockedIp.BlockedDate,
+                        Reason = blockedIp.Reason
+                    });
                 }
             }
         }
 
         public Task<List<SearchContent>> GetSearchContentsAsync(PageModule pageModule, DateTime lastIndexedOn)
         {
-           var searchContentList = new List<SearchContent>();
+            var searchContentList = new List<SearchContent>();
 
-           foreach (var IPGuard in _IPGuardRepository.GetIPGuards(pageModule.ModuleId))
-           {
-               if (IPGuard.ModifiedOn >= lastIndexedOn)
-               {
-                   searchContentList.Add(new SearchContent
-                   {
-                       EntityName = "GIBSIPGuard",
-                       EntityId = IPGuard.IPGuardId.ToString(),
-                       Title = IPGuard.Name,
-                       Body = IPGuard.Name,
-                       ContentModifiedBy = IPGuard.ModifiedBy,
-                       ContentModifiedOn = IPGuard.ModifiedOn
-                   });
-               }
-           }
+            foreach (var blockedIp in _IPGuardRepository.GetBlockedIps())
+            {
+                if (blockedIp.ModifiedOn >= lastIndexedOn)
+                {
+                    searchContentList.Add(new SearchContent
+                    {
+                        EntityName = "GIBSIPGuardBlockedIp",
+                        EntityId = blockedIp.BlockedIpId.ToString(),
+                        Title = blockedIp.IpAddress,
+                        Body = string.IsNullOrWhiteSpace(blockedIp.Reason) ? blockedIp.IpAddress : blockedIp.Reason,
+                        ContentModifiedBy = blockedIp.ModifiedBy,
+                        ContentModifiedOn = blockedIp.ModifiedOn
+                    });
+                }
+            }
 
-           return Task.FromResult(searchContentList);
+            return Task.FromResult(searchContentList);
         }
     }
 }

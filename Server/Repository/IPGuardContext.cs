@@ -1,8 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Http;
+using Oqtane.Infrastructure;
 using Oqtane.Modules;
 using Oqtane.Repository;
-using Oqtane.Infrastructure;
 using Oqtane.Repository.Databases.Interfaces;
 
 namespace GIBS.Module.IPGuard.Repository
@@ -10,10 +9,11 @@ namespace GIBS.Module.IPGuard.Repository
     public class IPGuardContext : DBContextBase, ITransientService, IMultiDatabase
     {
         public virtual DbSet<Models.IPGuard> IPGuard { get; set; }
+        public virtual DbSet<Models.BlockedIp> BlockedIps { get; set; }
+        public virtual DbSet<Models.ErrorAttempt> ErrorAttempts { get; set; }
 
         public IPGuardContext(IDBContextDependencies DBContextDependencies) : base(DBContextDependencies)
         {
-            // ContextBase handles multi-tenant database connections
         }
 
         protected override void OnModelCreating(ModelBuilder builder)
@@ -21,6 +21,8 @@ namespace GIBS.Module.IPGuard.Repository
             base.OnModelCreating(builder);
 
             builder.Entity<Models.IPGuard>().ToTable(ActiveDatabase.RewriteName("GIBSIPGuard"));
+            builder.Entity<Models.BlockedIp>().ToTable(ActiveDatabase.RewriteName("GIBSIPGuardBlockedIp"));
+            builder.Entity<Models.ErrorAttempt>().ToTable(ActiveDatabase.RewriteName("GIBSIPGuardErrorAttempt"));
         }
     }
 }

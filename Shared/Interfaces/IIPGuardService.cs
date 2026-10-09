@@ -3,16 +3,22 @@ using System.Threading.Tasks;
 
 namespace GIBS.Module.IPGuard.Services
 {
-    public interface IIPGuardService 
+    public interface IIPGuardService
     {
-        Task<List<Models.IPGuard>> GetIPGuardsAsync(int ModuleId);
+        Task<List<Models.BlockedIp>> GetBlockedIpsAsync(int ModuleId);
 
-        Task<Models.IPGuard> GetIPGuardAsync(int IPGuardId, int ModuleId);
+        Task<Models.BlockedIp> GetBlockedIpAsync(int BlockedIpId, int ModuleId);
 
-        Task<Models.IPGuard> AddIPGuardAsync(Models.IPGuard IPGuard);
+        Task<Models.BlockedIp> AddBlockedIpAsync(Models.BlockedIp BlockedIp, int ModuleId);
 
-        Task<Models.IPGuard> UpdateIPGuardAsync(Models.IPGuard IPGuard);
+        Task<Models.BlockedIp> UpdateBlockedIpAsync(Models.BlockedIp BlockedIp, int ModuleId);
 
-        Task DeleteIPGuardAsync(int IPGuardId, int ModuleId);
+        Task DeleteBlockedIpAsync(int BlockedIpId, int ModuleId);
+
+        Task<List<Models.ErrorAttempt>> GetErrorAttemptsAsync(int ModuleId);
+
+        Task DeleteAllErrorAttemptsAsync(int ModuleId);
+
+        Task DeleteErrorAttemptsByIpAddressAsync(string ipAddress, int ModuleId);
     }
 }

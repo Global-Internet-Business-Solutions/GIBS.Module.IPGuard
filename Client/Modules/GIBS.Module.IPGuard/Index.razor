@@ -1,44 +1,111 @@
-@using GIBS.Module.IPGuard.Services
+@using System.Linq
+@using System.Net
 @using GIBS.Module.IPGuard.Models
+@using GIBS.Module.IPGuard.Services
+@using Oqtane.Modules.Controls
 
 @namespace GIBS.Module.IPGuard
 @inherits ModuleBase
 @inject IIPGuardService ClientIPGuardService
-@inject NavigationManager NavigationManager
-@inject IStringLocalizer<Index> Localizer
 
-@if (_IPGuards == null)
+@if (_blockedIps == null || _errorAttempts == null)
 {
     <p><em>Loading...</em></p>
 }
 else
 {
-    <ActionLink Action="Add" Security="SecurityAccessLevel.Edit" Text="Add IPGuard" ResourceKey="Add" />
-    <br />
-    <br />
-    @if (@_IPGuards.Count != 0)
-    {
-        <Pager Items="@_IPGuards">
-            <Header>
-                <th style="width: 1px;">&nbsp;</th>
-                <th style="width: 1px;">&nbsp;</th>
-                <th>@Localizer["Name"]</th>
-            </Header>
-            <Row>
-                <td><ActionLink Action="Edit" Parameters="@($"id=" + context.IPGuardId.ToString())" ResourceKey="Edit"  /></td>
-                <td><ActionDialog Header="Delete IPGuard" Message="Are You Sure You Wish To Delete This IPGuard?" Action="Delete" Security="SecurityAccessLevel.Edit" Class="btn btn-danger" OnClick="@(async () => await Delete(context))" ResourceKey="Delete"  Id="@context.IPGuardId.ToString()" /></td>
-                <td>@context.Name</td>
-            </Row>
-        </Pager>
-    }
-    else
-    {
-        <p>@Localizer["Message.DisplayNone"]</p>
-    }
+    <TabStrip ActiveTab="BlockedIps">
+        <TabPanel Name="BlockedIps" Heading="Blocked IP Addresses">
+            <div class="d-flex justify-content-end align-items-center mb-3 mt-3">
+                <ActionLink Action="Add" Security="SecurityAccessLevel.Edit" Text="Block IP" />
+            </div>
+
+            @if (_blockedIps.Count > 0)
+            {
+                <Pager Items="@_blockedIps" PageSize="10" Toolbar="Bottom" Class="table table-striped table-bordered align-middle" SearchProperties="IpAddress,CountryLookup">
+                    <Header>
+                        <th>IP Address</th>
+                        <th>Country Lookup</th>
+                        <th>Error Count</th>
+                        <th>Blocked Date</th>
+                        <th>Reason</th>
+                        <th style="width: 1px;">Actions</th>
+                    </Header>
+                    <Row Context="blockedIp">
+                        <td><a href="https://www.ipqualityscore.com/free-ip-lookup-proxy-vpn-test/lookup/@blockedIp.IpAddress" target="_blank">@blockedIp.IpAddress</a></td>
+                        <td>@blockedIp.CountryLookup</td>
+                        <td>@blockedIp.ErrorCount</td>
+                        <td style="white-space: nowrap;">@blockedIp.BlockedDate.ToLocalTime().ToString("g")</td>
+                        <td>@blockedIp.Reason</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <ActionLink Action="Edit" Parameters="@($"id=" + blockedIp.BlockedIpId.ToString())" ResourceKey="Edit" />
+                                <ActionLink Action="Delete" Parameters="@($"id=" + blockedIp.BlockedIpId.ToString())" Text="Unblock" Class="btn btn-danger" />
+                            </div>
+                        </td>
+                    </Row>
+                </Pager>
+            }
+            else
+            {
+                <div class="alert alert-success">No IP addresses are currently blocked.</div>
+            }
+        </TabPanel>
+
+        <TabPanel Name="Recent404" Heading="Recent 404 Attempts">
+            @if (_errorAttempts.Count > 0)
+            {
+                <div class="d-flex justify-content-end align-items-end gap-2 mb-3 mt-3">
+                    <button type="button" class="btn btn-outline-danger" @onclick="OpenDeleteByIpModal">Delete By IP</button>
+                    <button type="button" class="btn btn-danger" @onclick="DeleteAllErrorAttempts">Delete All</button>
+                </div>
+
+                <Pager Items="@_errorAttempts" PageSize="50" Toolbar="Bottom" Class="table table-striped table-bordered align-middle" SearchProperties="IpAddress,RequestedUrl">
+                    <Header>
+                        <th>IP Address</th>
+                        <th>Requested URL</th>
+                        <th>Attempt Date</th>
+                    </Header>
+                    <Row Context="attempt">
+                        <td><a href="https://www.ipqualityscore.com/free-ip-lookup-proxy-vpn-test/lookup/@attempt.IpAddress" target="_blank">@attempt.IpAddress</a></td>
+                        <td>@attempt.RequestedUrl</td>
+                        <td style="white-space: nowrap;">@attempt.AttemptDate.ToLocalTime().ToString("g")</td>
+                    </Row>
+                </Pager>
+            }
+            else
+            {
+                <div class="alert alert-info">No 404 attempts have been recorded yet.</div>
+            }
+        </TabPanel>
+    </TabStrip>
+}
+
+@if (_showDeleteByIpModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,.5);" role="dialog" aria-modal="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Delete 404 Attempts by IP</h5>
+                    <button type="button" class="btn-close" aria-label="Close" @onclick="CloseDeleteByIpModal"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label" for="deleteIpAddress">IP Address</label>
+                    <input id="deleteIpAddress" class="form-control" value="@_deleteIpAddress" @oninput="OnDeleteIpAddressInput" maxlength="45" placeholder="Enter IPv4 or IPv6 address" />
+                    <small class="form-text text-muted">Valid formats: IPv4 (e.g. 192.168.1.10) or IPv6 (e.g. 2001:db8::1)</small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseDeleteByIpModal">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="DeleteErrorAttemptsByIpAddress">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
 }
 
 @code {
-    public override string RenderMode => RenderModes.Static;
+    public override string RenderMode => RenderModes.Interactive;
 
     public override List<Resource> Resources => new List<Resource>()
     {
@@ -46,34 +113,103 @@ else
         new Script("_content/GIBS.Module.IPGuard/Module.js")
     };
 
-    List<IPGuard> _IPGuards;
+    private List<BlockedIp> _blockedIps;
+    private List<ErrorAttempt> _errorAttempts;
+    private bool _showDeleteByIpModal;
+    private string _deleteIpAddress;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            _IPGuards = await ClientIPGuardService.GetIPGuardsAsync(ModuleState.ModuleId);
+            await LoadData();
         }
         catch (Exception ex)
         {
             await logger.LogError(ex, "Error Loading IPGuard {Error}", ex.Message);
-            AddModuleMessage(Localizer["Message.LoadError"], MessageType.Error);
+            AddModuleMessage($"Error loading IPGuard dashboard: {ex.Message}", MessageType.Error);
         }
     }
 
-    private async Task Delete(IPGuard IPGuard)
+    private async Task LoadData()
+    {
+        _blockedIps = await ClientIPGuardService.GetBlockedIpsAsync(ModuleState.ModuleId) ?? new List<BlockedIp>();
+        _errorAttempts = await ClientIPGuardService.GetErrorAttemptsAsync(ModuleState.ModuleId) ?? new List<ErrorAttempt>();
+    }
+
+    private void OpenDeleteByIpModal()
+    {
+        _deleteIpAddress = string.Empty;
+        _showDeleteByIpModal = true;
+    }
+
+    private void CloseDeleteByIpModal()
+    {
+        _showDeleteByIpModal = false;
+        _deleteIpAddress = string.Empty;
+    }
+
+    private void OnDeleteIpAddressInput(ChangeEventArgs args)
+    {
+        var value = args?.Value?.ToString() ?? string.Empty;
+        var filteredValue = new string(value.Where(ch =>
+            char.IsDigit(ch) ||
+            (ch >= 'a' && ch <= 'f') ||
+            (ch >= 'A' && ch <= 'F') ||
+            ch == '.' ||
+            ch == ':').ToArray());
+
+        _deleteIpAddress = filteredValue.Length > 45 ? filteredValue[..45] : filteredValue;
+    }
+
+    private async Task DeleteErrorAttemptsByIpAddress()
     {
         try
         {
-            await ClientIPGuardService.DeleteIPGuardAsync(IPGuard.IPGuardId, ModuleState.ModuleId);
-            await logger.LogInformation("IPGuard Deleted {IPGuard}", IPGuard);
-            _IPGuards = await ClientIPGuardService.GetIPGuardsAsync(ModuleState.ModuleId);
-            StateHasChanged();
+            var ipAddress = _deleteIpAddress?.Trim();
+            if (string.IsNullOrWhiteSpace(ipAddress))
+            {
+                AddModuleMessage("Please enter an IP address.", MessageType.Warning);
+                return;
+            }
+
+            if (!IPAddress.TryParse(ipAddress, out _))
+            {
+                AddModuleMessage("Please enter a valid IPv4 or IPv6 address.", MessageType.Warning);
+                return;
+            }
+
+            await ClientIPGuardService.DeleteErrorAttemptsByIpAddressAsync(ipAddress, ModuleState.ModuleId);
+            await LoadData();
+            CloseDeleteByIpModal();
+            AddModuleMessage($"Deleted 404 attempts for {ipAddress}.", MessageType.Success);
         }
         catch (Exception ex)
         {
-            await logger.LogError(ex, "Error Deleting IPGuard {IPGuard} {Error}", IPGuard, ex.Message);
-            AddModuleMessage(Localizer["Message.DeleteError"], MessageType.Error);
+            await logger.LogError(ex, "Error deleting error attempts for IP address {IpAddress} {Error}", _deleteIpAddress, ex.Message);
+            AddModuleMessage($"Error deleting 404 attempts by IP: {ex.Message}", MessageType.Error);
         }
     }
+
+    private async Task DeleteAllErrorAttempts()
+    {
+        try
+        {
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Delete all recent 404 attempts?");
+            if (!confirmed)
+            {
+                return;
+            }
+
+            await ClientIPGuardService.DeleteAllErrorAttemptsAsync(ModuleState.ModuleId);
+            _errorAttempts = new List<ErrorAttempt>();
+            AddModuleMessage("All recent 404 attempts were deleted.", MessageType.Success);
+        }
+        catch (Exception ex)
+        {
+            await logger.LogError(ex, "Error deleting error attempts {Error}", ex.Message);
+            AddModuleMessage($"Error deleting 404 attempts: {ex.Message}", MessageType.Error);
+        }
+    }
+
 }

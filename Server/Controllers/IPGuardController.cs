@@ -1,14 +1,14 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using System.Collections.Generic;
-using Microsoft.AspNetCore.Http;
-using Oqtane.Shared;
-using Oqtane.Enums;
-using Oqtane.Infrastructure;
-using GIBS.Module.IPGuard.Services;
-using Oqtane.Controllers;
 using System.Net;
 using System.Threading.Tasks;
+using GIBS.Module.IPGuard.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Oqtane.Controllers;
+using Oqtane.Enums;
+using Oqtane.Infrastructure;
+using Oqtane.Shared;
 
 namespace GIBS.Module.IPGuard.Controllers
 {
@@ -22,91 +22,127 @@ namespace GIBS.Module.IPGuard.Controllers
             _IPGuardService = IPGuardService;
         }
 
-        // GET: api/<controller>?moduleid=x
         [HttpGet]
         [Authorize(Policy = PolicyNames.ViewModule)]
-        public async Task<IEnumerable<Models.IPGuard>> Get(string moduleid)
+        public async Task<IEnumerable<Models.BlockedIp>> Get(int moduleid)
         {
-            int ModuleId;
-            if (int.TryParse(moduleid, out ModuleId) && IsAuthorizedEntityId(EntityNames.Module, ModuleId))
+            if (IsAuthorizedEntityId(EntityNames.Module, moduleid))
             {
-                return await _IPGuardService.GetIPGuardsAsync(ModuleId);
+                return await _IPGuardService.GetBlockedIpsAsync(moduleid);
             }
-            else
-            {
-                _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized IPGuard Get Attempt {ModuleId}", moduleid);
-                HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
-                return null;
-            }
+
+            _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized BlockedIp Get Attempt {ModuleId}", moduleid);
+            HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
+            return null;
         }
 
-        // GET api/<controller>/5
+        [HttpGet("attempts")]
+        [Authorize(Policy = PolicyNames.ViewModule)]
+        public async Task<IEnumerable<Models.ErrorAttempt>> GetAttempts(int moduleid)
+        {
+            if (IsAuthorizedEntityId(EntityNames.Module, moduleid))
+            {
+                return await _IPGuardService.GetErrorAttemptsAsync(moduleid);
+            }
+
+            _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized ErrorAttempt Get Attempt {ModuleId}", moduleid);
+            HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
+            return null;
+        }
+
         [HttpGet("{id}/{moduleid}")]
         [Authorize(Policy = PolicyNames.ViewModule)]
-        public async Task<Models.IPGuard> Get(int id, int moduleid)
+        public async Task<Models.BlockedIp> Get(int id, int moduleid)
         {
-            Models.IPGuard IPGuard = await _IPGuardService.GetIPGuardAsync(id, moduleid);
-            if (IPGuard != null && IsAuthorizedEntityId(EntityNames.Module, IPGuard.ModuleId))
+            var blockedIp = await _IPGuardService.GetBlockedIpAsync(id, moduleid);
+            if (blockedIp != null && IsAuthorizedEntityId(EntityNames.Module, moduleid))
             {
-                return IPGuard;
+                return blockedIp;
+            }
+
+            _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized BlockedIp Get Attempt {BlockedIpId} {ModuleId}", id, moduleid);
+            HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
+            return null;
+        }
+
+        [HttpDelete("attempts/{moduleid}")]
+        [Authorize(Policy = PolicyNames.EditModule)]
+        public async Task DeleteAttempts(int moduleid)
+        {
+            if (IsAuthorizedEntityId(EntityNames.Module, moduleid))
+            {
+                await _IPGuardService.DeleteAllErrorAttemptsAsync(moduleid);
             }
             else
-            { 
-                _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized IPGuard Get Attempt {IPGuardId} {ModuleId}", id, moduleid);
+            {
+                _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized ErrorAttempt Delete Attempt {ModuleId}", moduleid);
                 HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
-                return null;
             }
         }
 
-        // POST api/<controller>
+        [HttpDelete("attempts/byip")]
+        [Authorize(Policy = PolicyNames.EditModule)]
+        public async Task DeleteAttemptsByIp(int moduleid, string ipAddress)
+        {
+            if (IsAuthorizedEntityId(EntityNames.Module, moduleid))
+            {
+                await _IPGuardService.DeleteErrorAttemptsByIpAddressAsync(ipAddress, moduleid);
+            }
+            else
+            {
+                _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized ErrorAttempt Delete Attempt {ModuleId}", moduleid);
+                HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
+            }
+        }
+
         [HttpPost]
         [Authorize(Policy = PolicyNames.EditModule)]
-        public async Task<Models.IPGuard> Post([FromBody] Models.IPGuard IPGuard)
+        public async Task<Models.BlockedIp> Post(int moduleid, [FromBody] Models.BlockedIp blockedIp)
         {
-            if (ModelState.IsValid && IsAuthorizedEntityId(EntityNames.Module, IPGuard.ModuleId))
+            if (ModelState.IsValid && IsAuthorizedEntityId(EntityNames.Module, moduleid))
             {
-                IPGuard = await _IPGuardService.AddIPGuardAsync(IPGuard);
+                blockedIp = await _IPGuardService.AddBlockedIpAsync(blockedIp, moduleid);
             }
             else
             {
-                _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized IPGuard Post Attempt {IPGuard}", IPGuard);
+                _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized BlockedIp Post Attempt {BlockedIp}", blockedIp);
                 HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
-                IPGuard = null;
+                blockedIp = null;
             }
-            return IPGuard;
+
+            return blockedIp;
         }
 
-        // PUT api/<controller>/5
-        [HttpPut("{id}")]
+        [HttpPut("{id}/{moduleid}")]
         [Authorize(Policy = PolicyNames.EditModule)]
-        public async Task<Models.IPGuard> Put(int id, [FromBody] Models.IPGuard IPGuard)
+        public async Task<Models.BlockedIp> Put(int id, int moduleid, [FromBody] Models.BlockedIp blockedIp)
         {
-            if (ModelState.IsValid && IPGuard.IPGuardId == id && IsAuthorizedEntityId(EntityNames.Module, IPGuard.ModuleId))
+            if (ModelState.IsValid && blockedIp.BlockedIpId == id && IsAuthorizedEntityId(EntityNames.Module, moduleid))
             {
-                IPGuard = await _IPGuardService.UpdateIPGuardAsync(IPGuard);
+                blockedIp = await _IPGuardService.UpdateBlockedIpAsync(blockedIp, moduleid);
             }
             else
             {
-                _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized IPGuard Put Attempt {IPGuard}", IPGuard);
+                _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized BlockedIp Put Attempt {BlockedIp}", blockedIp);
                 HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
-                IPGuard = null;
+                blockedIp = null;
             }
-            return IPGuard;
+
+            return blockedIp;
         }
 
-        // DELETE api/<controller>/5
         [HttpDelete("{id}/{moduleid}")]
         [Authorize(Policy = PolicyNames.EditModule)]
         public async Task Delete(int id, int moduleid)
         {
-            Models.IPGuard IPGuard = await _IPGuardService.GetIPGuardAsync(id, moduleid);
-            if (IPGuard != null && IsAuthorizedEntityId(EntityNames.Module, IPGuard.ModuleId))
+            var blockedIp = await _IPGuardService.GetBlockedIpAsync(id, moduleid);
+            if (blockedIp != null && IsAuthorizedEntityId(EntityNames.Module, moduleid))
             {
-                await _IPGuardService.DeleteIPGuardAsync(id, IPGuard.ModuleId);
+                await _IPGuardService.DeleteBlockedIpAsync(id, moduleid);
             }
             else
             {
-                _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized IPGuard Delete Attempt {IPGuardId} {ModuleId}", id, moduleid);
+                _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized BlockedIp Delete Attempt {BlockedIpId} {ModuleId}", id, moduleid);
                 HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
             }
         }

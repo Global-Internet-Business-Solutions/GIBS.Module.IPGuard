@@ -1,0 +1,40 @@
+@using GIBS.Module.IPGuard.Models
+@using GIBS.Module.IPGuard.Services
+
+@namespace GIBS.Module.IPGuard
+@inherits ModuleBase
+@inject IIPGuardService ClientIPGuardService
+@inject NavigationManager NavigationManager
+
+<p><em>Unblocking IP address...</em></p>
+
+@code {
+    public override SecurityAccessLevel SecurityAccessLevel => SecurityAccessLevel.Edit;
+
+    public override string Actions => "Delete";
+
+    public override string Title => "Unblock IP";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            if (PageState.QueryString.TryGetValue("id", out var id) && int.TryParse(id, out var blockedIpId))
+            {
+                BlockedIp blockedIp = await ClientIPGuardService.GetBlockedIpAsync(blockedIpId, ModuleState.ModuleId);
+                await ClientIPGuardService.DeleteBlockedIpAsync(blockedIpId, ModuleState.ModuleId);
+                await logger.LogInformation("Blocked IP removed {BlockedIp}", blockedIp);
+            }
+            else
+            {
+                await logger.LogError("Error Removing Blocked IP {Error}", "Missing or invalid blocked IP id");
+            }
+        }
+        catch (Exception ex)
+        {
+            await logger.LogError(ex, "Error Removing Blocked IP {Error}", ex.Message);
+        }
+
+        NavigationManager.NavigateTo(NavigateUrl());
+    }
+}

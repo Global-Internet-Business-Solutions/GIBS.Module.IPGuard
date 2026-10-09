@@ -1,28 +1,54 @@
-@using Oqtane.Modules.Controls
-@using GIBS.Module.IPGuard.Services
 @using GIBS.Module.IPGuard.Models
+@using GIBS.Module.IPGuard.Services
+@using Oqtane.Modules.Controls
 
 @namespace GIBS.Module.IPGuard
 @inherits ModuleBase
 @inject IIPGuardService ClientIPGuardService
 @inject NavigationManager NavigationManager
-@inject IStringLocalizer<Edit> Localizer
 
 <form @ref="form" class="@(validated ? " was-validated" : "needs-validation" )" novalidate>
     <div class="container">
         <div class="row mb-1 align-items-center">
-            <Label Class="col-sm-3" For="name" HelpText="Enter a name" ResourceKey="Name">Name: </Label>
+            <Label Class="col-sm-3" For="ipaddress" HelpText="Enter an IP address">IP Address: </Label>
             <div class="col-sm-9">
-                <input id="name" class="form-control" @bind="@_name" required />
+                <input id="ipaddress" class="form-control" @bind="@_ipAddress" required maxlength="45" />
             </div>
         </div>
+        <div class="row mb-1 align-items-center">
+            <Label Class="col-sm-3" For="countrylookup" HelpText="Enter a country lookup">Country Lookup: </Label>
+            <div class="col-sm-9">
+                <input id="countrylookup" class="form-control" @bind="@_countryLookup" maxlength="100" />
+            </div>
+        </div>
+        <div class="row mb-1 align-items-center">
+            <Label Class="col-sm-3" For="reason" HelpText="Enter a reason">Reason: </Label>
+            <div class="col-sm-9">
+                <textarea id="reason" class="form-control" rows="4" @bind="@_reason"></textarea>
+            </div>
+        </div>
+        @if (PageState.Action == "Edit")
+        {
+            <div class="row mb-1 align-items-center">
+                <Label Class="col-sm-3">Error Count: </Label>
+                <div class="col-sm-9">
+                    <input class="form-control" value="@_errorCount" disabled />
+                </div>
+            </div>
+            <div class="row mb-1 align-items-center">
+                <Label Class="col-sm-3">Blocked Date (UTC): </Label>
+                <div class="col-sm-9">
+                    <input class="form-control" value="@(_blockedDate.ToString("g"))" disabled />
+                </div>
+            </div>
+        }
     </div>
-    <button type="button" class="btn btn-success" @onclick="Save">@Localizer["Save"]</button>
-    <NavLink class="btn btn-secondary" href="@NavigateUrl()">@Localizer["Cancel"]</NavLink>
+    <button type="button" class="btn btn-success" @onclick="Save">Save</button>
+    <NavLink class="btn btn-secondary" href="@NavigateUrl()">Cancel</NavLink>
     <br /><br />
     @if (PageState.Action == "Edit")
     {
-    <AuditInfo CreatedBy="@_createdby" CreatedOn="@_createdon" ModifiedBy="@_modifiedby" ModifiedOn="@_modifiedon"></AuditInfo>
+        <AuditInfo CreatedBy="@_createdby" CreatedOn="@_createdon" ModifiedBy="@_modifiedby" ModifiedOn="@_modifiedon"></AuditInfo>
     }
 </form>
 
@@ -31,7 +57,7 @@
 
     public override string Actions => "Add,Edit";
 
-    public override string Title => "Manage IPGuard";
+    public override string Title => "Manage Blocked IP";
 
     public override List<Resource> Resources => new List<Resource>()
     {
@@ -42,7 +68,11 @@
     private bool validated = false;
 
     private int _id;
-    private string _name;
+    private string _ipAddress;
+    private string _reason;
+    private string _countryLookup;
+    private int _errorCount;
+    private DateTime _blockedDate;
     private string _createdby;
     private DateTime _createdon;
     private string _modifiedby;
@@ -55,21 +85,25 @@
             if (PageState.Action == "Edit")
             {
                 _id = Int32.Parse(PageState.QueryString["id"]);
-                IPGuard IPGuard = await ClientIPGuardService.GetIPGuardAsync(_id, ModuleState.ModuleId);
-                if (IPGuard != null)
+                BlockedIp blockedIp = await ClientIPGuardService.GetBlockedIpAsync(_id, ModuleState.ModuleId);
+                if (blockedIp != null)
                 {
-                    _name = IPGuard.Name;
-                    _createdby = IPGuard.CreatedBy;
-                    _createdon = IPGuard.CreatedOn;
-                    _modifiedby = IPGuard.ModifiedBy;
-                    _modifiedon = IPGuard.ModifiedOn;
+                    _ipAddress = blockedIp.IpAddress;
+                    _reason = blockedIp.Reason;
+                    _countryLookup = blockedIp.CountryLookup;
+                    _errorCount = blockedIp.ErrorCount;
+                    _blockedDate = blockedIp.BlockedDate;
+                    _createdby = blockedIp.CreatedBy;
+                    _createdon = blockedIp.CreatedOn;
+                    _modifiedby = blockedIp.ModifiedBy;
+                    _modifiedon = blockedIp.ModifiedOn;
                 }
             }
         }
         catch (Exception ex)
         {
-            await logger.LogError(ex, "Error Loading IPGuard {IPGuardId} {Error}", _id, ex.Message);
-            AddModuleMessage(Localizer["Message.LoadError"], MessageType.Error);
+            await logger.LogError(ex, "Error Loading BlockedIp {BlockedIpId} {Error}", _id, ex.Message);
+            AddModuleMessage($"Error loading blocked IP: {ex.Message}", MessageType.Error);
         }
     }
 
@@ -83,30 +117,38 @@
             {
                 if (PageState.Action == "Add")
                 {
-                    IPGuard IPGuard = new IPGuard();
-                    IPGuard.ModuleId = ModuleState.ModuleId;
-                    IPGuard.Name = _name;
-                    IPGuard = await ClientIPGuardService.AddIPGuardAsync(IPGuard);
-                    await logger.LogInformation("IPGuard Added {IPGuard}", IPGuard);
+                    var blockedIp = new BlockedIp
+                    {
+                        IpAddress = _ipAddress,
+                        CountryLookup = _countryLookup,
+                        Reason = _reason,
+                        ErrorCount = _errorCount,
+                        BlockedDate = DateTime.UtcNow
+                    };
+
+                    blockedIp = await ClientIPGuardService.AddBlockedIpAsync(blockedIp, ModuleState.ModuleId);
+                    await logger.LogInformation("Blocked IP Added {BlockedIp}", blockedIp);
                 }
                 else
                 {
-                    IPGuard IPGuard = await ClientIPGuardService.GetIPGuardAsync(_id, ModuleState.ModuleId);
-                    IPGuard.Name = _name;
-                    await ClientIPGuardService.UpdateIPGuardAsync(IPGuard);
-                    await logger.LogInformation("IPGuard Updated {IPGuard}", IPGuard);
+                    var blockedIp = await ClientIPGuardService.GetBlockedIpAsync(_id, ModuleState.ModuleId);
+                    if (blockedIp != null)
+                    {
+                        blockedIp.IpAddress = _ipAddress;
+                        blockedIp.CountryLookup = _countryLookup;
+                        blockedIp.Reason = _reason;
+                        await ClientIPGuardService.UpdateBlockedIpAsync(blockedIp, ModuleState.ModuleId);
+                        await logger.LogInformation("Blocked IP Updated {BlockedIp}", blockedIp);
+                    }
                 }
+
                 NavigationManager.NavigateTo(NavigateUrl());
-            }
-            else
-            {
-                AddModuleMessage(Localizer["Message.SaveValidation"], MessageType.Warning);
             }
         }
         catch (Exception ex)
         {
-            await logger.LogError(ex, "Error Saving IPGuard {Error}", ex.Message);
-            AddModuleMessage(Localizer["Message.SaveError"], MessageType.Error);
+            await logger.LogError(ex, "Error Saving BlockedIp {Error}", ex.Message);
+            AddModuleMessage($"Error saving blocked IP: {ex.Message}", MessageType.Error);
         }
     }
 }
