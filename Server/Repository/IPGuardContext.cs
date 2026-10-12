@@ -22,6 +22,7 @@ namespace GIBS.Module.IPGuard.Repository
 
             builder.Entity<Models.IPGuard>().ToTable(ActiveDatabase.RewriteName("GIBSIPGuard"));
             builder.Entity<Models.BlockedIp>().ToTable(ActiveDatabase.RewriteName("GIBSIPGuardBlockedIp"));
+            builder.Entity<Models.BlockedIp>().HasIndex(item => item.IpAddress).IsUnique();
             builder.Entity<Models.ErrorAttempt>().ToTable(ActiveDatabase.RewriteName("GIBSIPGuardErrorAttempt"));
         }
     }

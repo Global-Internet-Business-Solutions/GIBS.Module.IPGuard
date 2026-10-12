@@ -16,7 +16,8 @@ else
 {
     <TabStrip ActiveTab="BlockedIps">
         <TabPanel Name="BlockedIps" Heading="Blocked IP Addresses">
-            <div class="d-flex justify-content-end align-items-center mb-3 mt-3">
+            <div class="d-flex justify-content-end align-items-center mb-3 mt-3 gap-2">
+                <button type="button" class="btn btn-outline-primary" @onclick="RefreshBlockedIps">Refresh</button>
                 <ActionLink Action="Add" Security="SecurityAccessLevel.Edit" Text="Block IP" />
             </div>
 
@@ -56,6 +57,7 @@ else
             @if (_errorAttempts.Count > 0)
             {
                 <div class="d-flex justify-content-end align-items-end gap-2 mb-3 mt-3">
+                    <button type="button" class="btn btn-outline-primary" @onclick="RefreshErrorAttempts">Refresh</button>
                     <button type="button" class="btn btn-outline-danger" @onclick="OpenDeleteByIpModal">Delete By IP</button>
                     <button type="button" class="btn btn-danger" @onclick="DeleteAllErrorAttempts">Delete All</button>
                 </div>
@@ -135,6 +137,16 @@ else
     {
         _blockedIps = await ClientIPGuardService.GetBlockedIpsAsync(ModuleState.ModuleId) ?? new List<BlockedIp>();
         _errorAttempts = await ClientIPGuardService.GetErrorAttemptsAsync(ModuleState.ModuleId) ?? new List<ErrorAttempt>();
+    }
+
+    private async Task RefreshBlockedIps()
+    {
+        await LoadData();
+    }
+
+    private async Task RefreshErrorAttempts()
+    {
+        await LoadData();
     }
 
     private void OpenDeleteByIpModal()

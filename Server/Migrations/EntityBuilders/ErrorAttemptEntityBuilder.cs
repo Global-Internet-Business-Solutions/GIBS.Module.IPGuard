@@ -21,7 +21,7 @@ namespace GIBS.Module.IPGuard.Migrations.EntityBuilders
         protected override ErrorAttemptEntityBuilder BuildTable(ColumnsBuilder table)
         {
             ErrorAttemptId = AddAutoIncrementColumn(table, "ErrorAttemptId");
-            IpAddress = AddMaxStringColumn(table, "IpAddress");
+            IpAddress = AddStringColumn(table, "IpAddress", 45);
             RequestedUrl = AddMaxStringColumn(table, "RequestedUrl");
             AttemptDate = AddDateTimeColumn(table, "AttemptDate");
             AddAuditableColumns(table);

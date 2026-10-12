@@ -5,6 +5,15 @@
 
 <div class="container">
     <div class="row mb-1 align-items-center">
+        <Label Class="col-sm-3" For="enabled" HelpText="Turn IP address blocking on or off for this install.">Enabled:</Label>
+        <div class="col-sm-9">
+            <div class="form-check">
+                <input id="enabled" type="checkbox" class="form-check-input" @bind="@_enabled" />
+                <label class="form-check-label" for="enabled">Enable IP address blocking</label>
+            </div>
+        </div>
+    </div>
+    <div class="row mb-1 align-items-center">
         <Label Class="col-sm-3" For="threshold" HelpText="Number of 404 attempts within an hour before an IP address is blocked.">404 Threshold:</Label>
         <div class="col-sm-9">
             <input id="threshold" type="number" min="1" class="form-control" @bind="@_threshold" />
@@ -16,23 +25,55 @@
             <textarea id="allowedIpAddresses" class="form-control" rows="3" @bind="@_allowedIpAddresses"></textarea>
         </div>
     </div>
+    <div class="row mb-1 align-items-center">
+        <Label Class="col-sm-3" For="excludeReservedRoutes" HelpText="Exclude Oqtane reserved and internal routes such as /api, /admin, and other framework paths from 404 tracking.">Exclude Reserved Routes:</Label>
+        <div class="col-sm-9">
+            <div class="form-check">
+                <input id="excludeReservedRoutes" type="checkbox" class="form-check-input" @bind="@_excludeReservedRoutes" />
+                <label class="form-check-label" for="excludeReservedRoutes">Do not track reserved or internal routes</label>
+            </div>
+        </div>
+    </div>
+    <div class="row mb-1 align-items-center">
+        <Label Class="col-sm-3" For="diagnosticMode" HelpText="Temporarily enable extra IPGuard event logging for troubleshooting. Leave off during normal operation.">Diagnostic Mode:</Label>
+        <div class="col-sm-9">
+            <div class="form-check">
+                <input id="diagnosticMode" type="checkbox" class="form-check-input" @bind="@_diagnosticMode" />
+                <label class="form-check-label" for="diagnosticMode">Enable temporary diagnostic logging</label>
+            </div>
+        </div>
+    </div>
 </div>
 
 @code {
     public override string Title => "IPGuard Settings";
 
+    private bool _enabled = IPGuardSettings.DefaultEnabled;
     private int _threshold = IPGuardSettings.DefaultThreshold;
+    private bool _excludeReservedRoutes = IPGuardSettings.DefaultExcludeReservedRoutes;
+    private bool _diagnosticMode = IPGuardSettings.DefaultDiagnosticMode;
     private string _allowedIpAddresses;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            Dictionary<string, string> settings = await SettingService.GetSiteSettingsAsync(PageState.Site.SiteId);
-            _threshold = int.TryParse(SettingService.GetSetting(settings, IPGuardSettings.ThresholdSettingName, IPGuardSettings.DefaultThreshold.ToString()), out var threshold) && threshold > 0
+            Dictionary<string, string> hostSettings = await SettingService.GetHostSettingsAsync();
+            Dictionary<string, string> siteSettings = await SettingService.GetSiteSettingsAsync(PageState.Site.SiteId);
+
+            _enabled = bool.TryParse(GetSettingValue(hostSettings, siteSettings, IPGuardSettings.EnabledSettingName, IPGuardSettings.LegacyEnabledSettingName, IPGuardSettings.DefaultEnabled.ToString()), out var enabled)
+                ? enabled
+                : IPGuardSettings.DefaultEnabled;
+            _threshold = int.TryParse(GetSettingValue(hostSettings, siteSettings, IPGuardSettings.ThresholdSettingName, IPGuardSettings.LegacyThresholdSettingName, IPGuardSettings.DefaultThreshold.ToString()), out var threshold) && threshold > 0
                 ? threshold
                 : IPGuardSettings.DefaultThreshold;
-            _allowedIpAddresses = SettingService.GetSetting(settings, IPGuardSettings.AllowedIpAddressSettingName, string.Empty);
+            _allowedIpAddresses = GetSettingValue(hostSettings, siteSettings, IPGuardSettings.AllowedIpAddressSettingName, IPGuardSettings.LegacyAllowedIpAddressSettingName, string.Empty);
+            _excludeReservedRoutes = bool.TryParse(GetSettingValue(hostSettings, siteSettings, IPGuardSettings.ExcludeReservedRoutesSettingName, string.Empty, IPGuardSettings.DefaultExcludeReservedRoutes.ToString()), out var excludeReservedRoutes)
+                ? excludeReservedRoutes
+                : IPGuardSettings.DefaultExcludeReservedRoutes;
+            _diagnosticMode = bool.TryParse(GetSettingValue(hostSettings, siteSettings, IPGuardSettings.DiagnosticModeSettingName, string.Empty, IPGuardSettings.DefaultDiagnosticMode.ToString()), out var diagnosticMode)
+                ? diagnosticMode
+                : IPGuardSettings.DefaultDiagnosticMode;
         }
         catch (Exception ex)
         {
@@ -49,14 +90,42 @@
                 _threshold = IPGuardSettings.DefaultThreshold;
             }
 
-            var settings = await SettingService.GetSiteSettingsAsync(PageState.Site.SiteId);
+            var settings = await SettingService.GetHostSettingsAsync();
+            settings = SettingService.SetSetting(settings, IPGuardSettings.EnabledSettingName, _enabled.ToString());
             settings = SettingService.SetSetting(settings, IPGuardSettings.ThresholdSettingName, _threshold.ToString());
             settings = SettingService.SetSetting(settings, IPGuardSettings.AllowedIpAddressSettingName, _allowedIpAddresses?.Trim() ?? string.Empty);
-            await SettingService.UpdateSiteSettingsAsync(settings, PageState.Site.SiteId);
+            settings = SettingService.SetSetting(settings, IPGuardSettings.ExcludeReservedRoutesSettingName, _excludeReservedRoutes.ToString());
+            settings = SettingService.SetSetting(settings, IPGuardSettings.DiagnosticModeSettingName, _diagnosticMode.ToString());
+            await SettingService.UpdateHostSettingsAsync(settings);
         }
         catch (Exception ex)
         {
             AddModuleMessage(ex.Message, MessageType.Error);
         }
+    }
+
+    private static string GetSettingValue(Dictionary<string, string> hostSettings, Dictionary<string, string> siteSettings, string settingName, string legacySettingName, string defaultValue)
+    {
+        if (hostSettings != null && hostSettings.TryGetValue(settingName, out var hostValue))
+        {
+            return hostValue;
+        }
+
+        if (hostSettings != null && !string.IsNullOrWhiteSpace(legacySettingName) && hostSettings.TryGetValue(legacySettingName, out var hostLegacyValue))
+        {
+            return hostLegacyValue;
+        }
+
+        if (siteSettings != null && siteSettings.TryGetValue(settingName, out var siteValue))
+        {
+            return siteValue;
+        }
+
+        if (siteSettings != null && !string.IsNullOrWhiteSpace(legacySettingName) && siteSettings.TryGetValue(legacySettingName, out var siteLegacyValue))
+        {
+            return siteLegacyValue;
+        }
+
+        return defaultValue;
     }
 }

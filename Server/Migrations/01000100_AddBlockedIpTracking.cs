@@ -8,7 +8,7 @@ using GIBS.Module.IPGuard.Repository;
 namespace GIBS.Module.IPGuard.Migrations
 {
     [DbContext(typeof(IPGuardContext))]
-    [Migration("GIBS.Module.IPGuard.01.00.00.01")]
+    [Migration("GIBS.Module.IPGuard.01.00.01.00")]
     public class AddBlockedIpTracking : MultiDatabaseMigration
     {
         public AddBlockedIpTracking(IDatabase database) : base(database)

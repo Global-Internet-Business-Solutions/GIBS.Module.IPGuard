@@ -21,7 +21,7 @@ namespace GIBS.Module.IPGuard.Migrations.EntityBuilders
         protected override BlockedIpEntityBuilder BuildTable(ColumnsBuilder table)
         {
             BlockedIpId = AddAutoIncrementColumn(table, "BlockedIpId");
-            IpAddress = AddMaxStringColumn(table, "IpAddress");
+            IpAddress = AddStringColumn(table, "IpAddress", 45);
             CountryLookup = AddMaxStringColumn(table, "CountryLookup");
             ErrorCount = AddIntegerColumn(table, "ErrorCount");
             BlockedDate = AddDateTimeColumn(table, "BlockedDate");

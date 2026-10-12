@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using GIBS.Module.IPGuard.Repository;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Oqtane.Enums;
 using Oqtane.Infrastructure;
 using Oqtane.Models;
@@ -67,8 +68,29 @@ namespace GIBS.Module.IPGuard.Services
                     BlockedIp.BlockedDate = DateTime.UtcNow;
                 }
 
-                BlockedIp = _IPGuardRepository.AddBlockedIp(BlockedIp);
-                _logger.Log(LogLevel.Information, this, LogFunction.Create, "BlockedIp Added {BlockedIp}", BlockedIp);
+                BlockedIp.IpAddress = NormalizeIpAddress(BlockedIp.IpAddress);
+
+                var existingBlockedIp = _IPGuardRepository.GetBlockedIp(BlockedIp.IpAddress);
+                if (existingBlockedIp != null)
+                {
+                    throw new InvalidOperationException($"The IP address '{BlockedIp.IpAddress}' is already blocked.");
+                }
+
+                try
+                {
+                    BlockedIp = _IPGuardRepository.AddBlockedIp(BlockedIp);
+                    _logger.Log(LogLevel.Information, this, LogFunction.Create, "BlockedIp Added {BlockedIp}", BlockedIp);
+                }
+                catch (DbUpdateException ex)
+                {
+                    var duplicateBlockedIp = _IPGuardRepository.GetBlockedIp(BlockedIp.IpAddress);
+                    if (duplicateBlockedIp != null)
+                    {
+                        throw new InvalidOperationException($"The IP address '{BlockedIp.IpAddress}' is already blocked.", ex);
+                    }
+
+                    throw;
+                }
             }
             else
             {
@@ -83,6 +105,7 @@ namespace GIBS.Module.IPGuard.Services
         {
             if (IsAuthorized(ModuleId, PermissionNames.Edit))
             {
+                BlockedIp.IpAddress = NormalizeIpAddress(BlockedIp.IpAddress);
                 BlockedIp = _IPGuardRepository.UpdateBlockedIp(BlockedIp);
                 _logger.Log(LogLevel.Information, this, LogFunction.Update, "BlockedIp Updated {BlockedIp}", BlockedIp);
             }
@@ -102,7 +125,7 @@ namespace GIBS.Module.IPGuard.Services
                 var blockedIp = _IPGuardRepository.GetBlockedIp(BlockedIpId);
                 if (blockedIp != null)
                 {
-                    _IPGuardRepository.DeleteErrorAttempts(blockedIp.IpAddress);
+                    _IPGuardRepository.DeleteErrorAttempts(NormalizeIpAddress(blockedIp.IpAddress));
                     _IPGuardRepository.DeleteBlockedIp(BlockedIpId);
                 }
                 _logger.Log(LogLevel.Information, this, LogFunction.Delete, "BlockedIp Deleted {BlockedIpId}", BlockedIpId);
@@ -145,7 +168,7 @@ namespace GIBS.Module.IPGuard.Services
         {
             if (IsAuthorized(ModuleId, PermissionNames.Edit))
             {
-                var normalizedIpAddress = ipAddress?.Trim();
+                var normalizedIpAddress = NormalizeIpAddress(ipAddress);
                 if (!string.IsNullOrWhiteSpace(normalizedIpAddress))
                 {
                     _IPGuardRepository.DeleteErrorAttempts(normalizedIpAddress);
@@ -162,12 +185,12 @@ namespace GIBS.Module.IPGuard.Services
 
         public Task<bool> IsBlockedAsync(string ipAddress)
         {
-            if (string.IsNullOrWhiteSpace(ipAddress))
+            if (string.IsNullOrWhiteSpace(ipAddress) || !IsEnabled())
             {
                 return Task.FromResult(false);
             }
 
-            var normalizedIpAddress = ipAddress.Trim();
+            var normalizedIpAddress = NormalizeIpAddress(ipAddress);
             if (IsAllowedIpAddress(normalizedIpAddress))
             {
                 return Task.FromResult(false);
@@ -183,8 +206,7 @@ namespace GIBS.Module.IPGuard.Services
                 return;
             }
 
-            var threshold = GetThreshold();
-            var normalizedIpAddress = ipAddress.Trim();
+            var normalizedIpAddress = NormalizeIpAddress(ipAddress);
             _IPGuardRepository.AddErrorAttempt(new Models.ErrorAttempt
             {
                 IpAddress = normalizedIpAddress,
@@ -192,23 +214,65 @@ namespace GIBS.Module.IPGuard.Services
                 AttemptDate = DateTime.UtcNow
             });
 
+            if (!IsEnabled())
+            {
+                return;
+            }
+
+            var threshold = GetThreshold();
             var recentAttempts = _IPGuardRepository.GetRecentErrorAttemptCount(normalizedIpAddress, DateTime.UtcNow.Subtract(Window));
-            if (recentAttempts >= threshold && !IsAllowedIpAddress(normalizedIpAddress))
+            var isAllowedIpAddress = IsAllowedIpAddress(normalizedIpAddress);
+
+            if (recentAttempts >= threshold && !isAllowedIpAddress)
             {
                 var blockedIp = _IPGuardRepository.GetBlockedIp(normalizedIpAddress);
+                if (recentAttempts == threshold)
+                {
+                    LogDiagnostic(LogLevel.Information, "IPGuard threshold crossed for {IpAddress}: RecentAttempts={RecentAttempts} Threshold={Threshold} ExistingBlockedRecord={HasBlockedRecord} SiteId={SiteId} RequestedUrl={RequestedUrl}", normalizedIpAddress, recentAttempts, threshold, blockedIp != null, _alias?.SiteId ?? -1, requestedUrl);
+                }
+
                 if (blockedIp == null)
                 {
                     var country = await _geoLocationService.GetCountryAsync(normalizedIpAddress);
 
-                    _IPGuardRepository.AddBlockedIp(new Models.BlockedIp
+                    blockedIp = new Models.BlockedIp
                     {
                         IpAddress = normalizedIpAddress,
                         CountryLookup = country,
                         ErrorCount = recentAttempts,
                         BlockedDate = DateTime.UtcNow,
                         Reason = $"Exceeded {recentAttempts} 404 errors within the last hour."
-                    });
-                    _logger.Log(LogLevel.Warning, this, LogFunction.Create, "Blocked IP {IpAddress} after {ErrorCount} 404 attempts", normalizedIpAddress, recentAttempts);
+                    };
+
+                    try
+                    {
+                        _IPGuardRepository.AddBlockedIp(blockedIp);
+                        _logger.Log(LogLevel.Warning, this, LogFunction.Create, "Blocked IP {IpAddress} after {ErrorCount} 404 attempts", normalizedIpAddress, recentAttempts);
+                    }
+                    catch (DbUpdateException ex)
+                    {
+                        LogDiagnostic(LogLevel.Error, ex, "IPGuard blocked IP insert failed for {IpAddress}: ErrorCount={ErrorCount} SiteId={SiteId} Message={ErrorMessage}", normalizedIpAddress, recentAttempts, _alias?.SiteId ?? -1, ex.Message);
+
+                        blockedIp = _IPGuardRepository.GetBlockedIp(normalizedIpAddress);
+                        if (blockedIp == null)
+                        {
+                            LogDiagnostic(LogLevel.Error, "IPGuard blocked IP insert failure left no record for {IpAddress}: ErrorCount={ErrorCount} SiteId={SiteId}", normalizedIpAddress, recentAttempts, _alias?.SiteId ?? -1);
+                            throw;
+                        }
+
+                        if (blockedIp.ErrorCount < recentAttempts)
+                        {
+                            blockedIp.ErrorCount = recentAttempts;
+                            blockedIp.BlockedDate = DateTime.UtcNow;
+                            blockedIp.Reason = $"Exceeded {recentAttempts} 404 errors within the last hour.";
+                            if (string.IsNullOrWhiteSpace(blockedIp.CountryLookup) || blockedIp.CountryLookup == IpApiGeoLocationService.LookupError)
+                            {
+                                blockedIp.CountryLookup = country;
+                            }
+                            _IPGuardRepository.UpdateBlockedIp(blockedIp);
+                            _logger.Log(LogLevel.Warning, this, LogFunction.Update, "Updated blocked IP {IpAddress} to {ErrorCount} 404 attempts", normalizedIpAddress, recentAttempts);
+                        }
+                    }
                 }
                 else if (blockedIp.ErrorCount < recentAttempts)
                 {
@@ -227,17 +291,31 @@ namespace GIBS.Module.IPGuard.Services
 
         private int GetThreshold()
         {
-            var siteId = _alias?.SiteId ?? -1;
-            if (siteId != -1)
-            {
-                var threshold = _settingRepository.GetSettingValue(EntityNames.Site, siteId, IPGuardSettings.ThresholdSettingName, IPGuardSettings.DefaultThreshold.ToString());
-                if (int.TryParse(threshold, out var value) && value > 0)
-                {
-                    return value;
-                }
-            }
+            var threshold = GetSettingValue(IPGuardSettings.ThresholdSettingName, IPGuardSettings.LegacyThresholdSettingName, IPGuardSettings.DefaultThreshold.ToString());
+            return int.TryParse(threshold, out var value) && value > 0 ? value : IPGuardSettings.DefaultThreshold;
+        }
 
-            return IPGuardSettings.DefaultThreshold;
+        private bool IsEnabled()
+        {
+            var enabled = GetSettingValue(IPGuardSettings.EnabledSettingName, IPGuardSettings.LegacyEnabledSettingName, IPGuardSettings.DefaultEnabled.ToString());
+            return bool.TryParse(enabled, out var value) ? value : IPGuardSettings.DefaultEnabled;
+        }
+
+        public bool ExcludeReservedRoutesFromTracking()
+        {
+            var excludeReservedRoutes = GetSettingValue(IPGuardSettings.ExcludeReservedRoutesSettingName, string.Empty, IPGuardSettings.DefaultExcludeReservedRoutes.ToString());
+            return bool.TryParse(excludeReservedRoutes, out var value) ? value : IPGuardSettings.DefaultExcludeReservedRoutes;
+        }
+
+        private bool IsDiagnosticModeEnabled()
+        {
+            var diagnosticMode = GetSettingValue(IPGuardSettings.DiagnosticModeSettingName, string.Empty, IPGuardSettings.DefaultDiagnosticMode.ToString());
+            return bool.TryParse(diagnosticMode, out var value) ? value : IPGuardSettings.DefaultDiagnosticMode;
+        }
+
+        private static string NormalizeIpAddress(string ipAddress)
+        {
+            return ipAddress?.Trim().ToLowerInvariant();
         }
 
         private bool IsAllowedIpAddress(string ipAddress)
@@ -247,21 +325,72 @@ namespace GIBS.Module.IPGuard.Services
                 return false;
             }
 
-            var siteId = _alias?.SiteId ?? -1;
-            if (siteId == -1)
-            {
-                return false;
-            }
-
-            var allowedIpAddresses = _settingRepository.GetSettingValue(EntityNames.Site, siteId, IPGuardSettings.AllowedIpAddressSettingName, string.Empty);
+            var allowedIpAddresses = GetSettingValue(IPGuardSettings.AllowedIpAddressSettingName, IPGuardSettings.LegacyAllowedIpAddressSettingName, string.Empty);
             if (string.IsNullOrWhiteSpace(allowedIpAddresses))
             {
                 return false;
             }
 
+            var normalizedIpAddress = NormalizeIpAddress(ipAddress);
+
             return allowedIpAddresses
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Any(allowedIpAddress => string.Equals(allowedIpAddress, ipAddress, StringComparison.OrdinalIgnoreCase));
+                .Any(allowedIpAddress => string.Equals(NormalizeIpAddress(allowedIpAddress), normalizedIpAddress, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private string GetSettingValue(string settingName, string legacySettingName, string defaultValue)
+        {
+            var hostSetting = _settingRepository.GetSetting(EntityNames.Host, -1, settingName);
+            if (hostSetting != null)
+            {
+                return hostSetting.SettingValue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(legacySettingName))
+            {
+                var legacyHostSetting = _settingRepository.GetSetting(EntityNames.Host, -1, legacySettingName);
+                if (legacyHostSetting != null)
+                {
+                    return legacyHostSetting.SettingValue;
+                }
+            }
+
+            var siteId = _alias?.SiteId ?? -1;
+            if (siteId != -1)
+            {
+                var siteSetting = _settingRepository.GetSetting(EntityNames.Site, siteId, settingName);
+                if (siteSetting != null)
+                {
+                    return siteSetting.SettingValue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(legacySettingName))
+                {
+                    var legacySiteSetting = _settingRepository.GetSetting(EntityNames.Site, siteId, legacySettingName);
+                    if (legacySiteSetting != null)
+                    {
+                        return legacySiteSetting.SettingValue;
+                    }
+                }
+            }
+
+            return defaultValue;
+        }
+
+        private void LogDiagnostic(LogLevel level, string message, params object[] args)
+        {
+            if (IsDiagnosticModeEnabled())
+            {
+                _logger.Log(level, this, LogFunction.Other, message, args);
+            }
+        }
+
+        private void LogDiagnostic(LogLevel level, Exception exception, string message, params object[] args)
+        {
+            if (IsDiagnosticModeEnabled())
+            {
+                _logger.Log(level, this, LogFunction.Other, exception, message, args);
+            }
         }
 
         private bool IsAuthorized(int moduleId, string permission)

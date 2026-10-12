@@ -7,11 +7,14 @@ using GIBS.Module.IPGuard.Services;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Oqtane.Shared;
 
 namespace GIBS.Module.IPGuard.Middleware
 {
     public class IPGuardMiddleware
     {
+        private const string Record404AttemptItemKey = "GIBS.Module.IPGuard.Record404Attempt";
+
         private readonly RequestDelegate _next;
 
         public IPGuardMiddleware(RequestDelegate next)
@@ -22,7 +25,7 @@ namespace GIBS.Module.IPGuard.Middleware
         public async Task InvokeAsync(HttpContext context, IServiceScopeFactory serviceScopeFactory)
         {
             var ipAddress = GetClientIpAddress(context);
-            if (string.IsNullOrWhiteSpace(ipAddress) || ShouldBypassProtection(ipAddress, context.Request.Path))
+            if (string.IsNullOrWhiteSpace(ipAddress))
             {
                 await _next(context);
                 return;
@@ -30,6 +33,13 @@ namespace GIBS.Module.IPGuard.Middleware
 
             using var scope = serviceScopeFactory.CreateScope();
             var ipGuardService = scope.ServiceProvider.GetRequiredService<ServerIPGuardService>();
+            var excludeReservedRoutes = ipGuardService.ExcludeReservedRoutesFromTracking();
+
+            if (ShouldBypassProtection(context.Request.Path, excludeReservedRoutes))
+            {
+                await _next(context);
+                return;
+            }
 
             if (!IsLoopbackAddress(ipAddress) && await ipGuardService.IsBlockedAsync(ipAddress))
             {
@@ -44,7 +54,7 @@ namespace GIBS.Module.IPGuard.Middleware
             {
                 var reExecuteFeature = context.Features.Get<IStatusCodeReExecuteFeature>();
                 var path = reExecuteFeature?.OriginalPath ?? context.Request.Path.Value ?? string.Empty;
-                if (!ShouldTrack404(path))
+                if (!ShouldTrack404(path, excludeReservedRoutes) || context.Items.ContainsKey(Record404AttemptItemKey))
                 {
                     return;
                 }
@@ -58,16 +68,17 @@ namespace GIBS.Module.IPGuard.Middleware
                     path,
                     query);
 
+                context.Items[Record404AttemptItemKey] = true;
                 await ipGuardService.Record404Async(ipAddress, requestedUrl);
             }
         }
 
-        private static bool ShouldBypassProtection(string ipAddress, PathString path)
+        private static bool ShouldBypassProtection(PathString path, bool excludeReservedRoutes)
         {
-            return IsFrameworkPath(path.Value);
+            return IsFrameworkPath(path.Value) || (excludeReservedRoutes && IsReservedOrInternalPath(path.Value));
         }
 
-        private static bool ShouldTrack404(string path)
+        private static bool ShouldTrack404(string path, bool excludeReservedRoutes)
         {
             if (string.IsNullOrWhiteSpace(path))
             {
@@ -75,6 +86,11 @@ namespace GIBS.Module.IPGuard.Middleware
             }
 
             if (IsFrameworkPath(path))
+            {
+                return false;
+            }
+
+            if (excludeReservedRoutes && IsReservedOrInternalPath(path))
             {
                 return false;
             }
@@ -93,6 +109,24 @@ namespace GIBS.Module.IPGuard.Middleware
                 || path.StartsWith("/_framework", StringComparison.OrdinalIgnoreCase)
                 || path.StartsWith("/_content", StringComparison.OrdinalIgnoreCase)
                 || path.StartsWith("/_vs", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsReservedOrInternalPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            var firstSegment = path.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(firstSegment))
+            {
+                return false;
+            }
+
+            return string.Equals(firstSegment, "admin", StringComparison.OrdinalIgnoreCase)
+                || Constants.ReservedRoutes.Any(route => string.Equals(route, firstSegment, StringComparison.OrdinalIgnoreCase))
+                || Constants.InternalPagePaths.Any(route => string.Equals(route, firstSegment, StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool IsLoopbackAddress(string ipAddress)

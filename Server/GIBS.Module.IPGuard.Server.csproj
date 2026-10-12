@@ -3,9 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
-    <Version>1.0.1</Version>
+    <Version>1.0.7</Version>
     <Product>GIBS.Module.IPGuard</Product>
-    <Authors>GIBS</Authors>
+    <Authors>Joseph M Aucoin</Authors>
     <Company>GIBS</Company>
     <Description>Automated IP blocking mechanism based on 404 errors</Description>
     <Copyright>GIBS</Copyright>

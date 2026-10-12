@@ -117,6 +117,14 @@
             {
                 if (PageState.Action == "Add")
                 {
+                    var normalizedIpAddress = NormalizeIpAddress(_ipAddress);
+                    var existingBlockedIps = await ClientIPGuardService.GetBlockedIpsAsync(ModuleState.ModuleId);
+                    if (existingBlockedIps.Any(blockedIp => NormalizeIpAddress(blockedIp.IpAddress) == normalizedIpAddress))
+                    {
+                        AddModuleMessage($"The IP address '{_ipAddress}' is already blocked.", MessageType.Warning);
+                        return;
+                    }
+
                     var blockedIp = new BlockedIp
                     {
                         IpAddress = _ipAddress,
@@ -150,5 +158,10 @@
             await logger.LogError(ex, "Error Saving BlockedIp {Error}", ex.Message);
             AddModuleMessage($"Error saving blocked IP: {ex.Message}", MessageType.Error);
         }
+    }
+
+    private static string NormalizeIpAddress(string ipAddress)
+    {
+        return ipAddress?.Trim().ToLowerInvariant();
     }
 }
