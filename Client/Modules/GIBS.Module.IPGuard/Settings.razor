@@ -14,9 +14,15 @@
         </div>
     </div>
     <div class="row mb-1 align-items-center">
-        <Label Class="col-sm-3" For="threshold" HelpText="Number of 404 attempts within an hour before an IP address is blocked.">404 Threshold:</Label>
+        <Label Class="col-sm-3" For="threshold" HelpText="Number of 404 attempts within the configured blocking window before an IP address is blocked.">404 Threshold:</Label>
         <div class="col-sm-9">
             <input id="threshold" type="number" min="1" class="form-control" @bind="@_threshold" />
+        </div>
+    </div>
+    <div class="row mb-1 align-items-center">
+        <Label Class="col-sm-3" For="blockWindowHours" HelpText="Number of hours to look back when counting recent 404 attempts.">Block Window (Hours):</Label>
+        <div class="col-sm-9">
+            <input id="blockWindowHours" type="number" min="1" class="form-control" @bind="@_blockWindowHours" />
         </div>
     </div>
     <div class="row mb-1 align-items-center">
@@ -50,6 +56,7 @@
 
     private bool _enabled = IPGuardSettings.DefaultEnabled;
     private int _threshold = IPGuardSettings.DefaultThreshold;
+    private int _blockWindowHours = IPGuardSettings.DefaultBlockWindowHours;
     private bool _excludeReservedRoutes = IPGuardSettings.DefaultExcludeReservedRoutes;
     private bool _diagnosticMode = IPGuardSettings.DefaultDiagnosticMode;
     private string _allowedIpAddresses;
@@ -67,6 +74,9 @@
             _threshold = int.TryParse(GetSettingValue(hostSettings, siteSettings, IPGuardSettings.ThresholdSettingName, IPGuardSettings.LegacyThresholdSettingName, IPGuardSettings.DefaultThreshold.ToString()), out var threshold) && threshold > 0
                 ? threshold
                 : IPGuardSettings.DefaultThreshold;
+            _blockWindowHours = int.TryParse(GetSettingValue(hostSettings, siteSettings, IPGuardSettings.BlockWindowHoursSettingName, string.Empty, IPGuardSettings.DefaultBlockWindowHours.ToString()), out var blockWindowHours) && blockWindowHours > 0
+                ? blockWindowHours
+                : IPGuardSettings.DefaultBlockWindowHours;
             _allowedIpAddresses = GetSettingValue(hostSettings, siteSettings, IPGuardSettings.AllowedIpAddressSettingName, IPGuardSettings.LegacyAllowedIpAddressSettingName, string.Empty);
             _excludeReservedRoutes = bool.TryParse(GetSettingValue(hostSettings, siteSettings, IPGuardSettings.ExcludeReservedRoutesSettingName, string.Empty, IPGuardSettings.DefaultExcludeReservedRoutes.ToString()), out var excludeReservedRoutes)
                 ? excludeReservedRoutes
@@ -90,9 +100,15 @@
                 _threshold = IPGuardSettings.DefaultThreshold;
             }
 
+            if (_blockWindowHours < 1)
+            {
+                _blockWindowHours = IPGuardSettings.DefaultBlockWindowHours;
+            }
+
             var settings = await SettingService.GetHostSettingsAsync();
             settings = SettingService.SetSetting(settings, IPGuardSettings.EnabledSettingName, _enabled.ToString());
             settings = SettingService.SetSetting(settings, IPGuardSettings.ThresholdSettingName, _threshold.ToString());
+            settings = SettingService.SetSetting(settings, IPGuardSettings.BlockWindowHoursSettingName, _blockWindowHours.ToString());
             settings = SettingService.SetSetting(settings, IPGuardSettings.AllowedIpAddressSettingName, _allowedIpAddresses?.Trim() ?? string.Empty);
             settings = SettingService.SetSetting(settings, IPGuardSettings.ExcludeReservedRoutesSettingName, _excludeReservedRoutes.ToString());
             settings = SettingService.SetSetting(settings, IPGuardSettings.DiagnosticModeSettingName, _diagnosticMode.ToString());

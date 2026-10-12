@@ -8,6 +8,7 @@ namespace GIBS.Module.IPGuard
         public const string AllowedIpAddressSettingName = SettingPrefix + "AllowedIpAddress";
         public const string DiagnosticModeSettingName = SettingPrefix + "DiagnosticMode";
         public const string ExcludeReservedRoutesSettingName = SettingPrefix + "ExcludeReservedRoutes";
+        public const string BlockWindowHoursSettingName = SettingPrefix + "BlockWindowHours";
         public const string LegacyEnabledSettingName = "Enabled";
         public const string LegacyThresholdSettingName = "Threshold";
         public const string LegacyAllowedIpAddressSettingName = "AllowedIpAddress";
@@ -15,5 +16,6 @@ namespace GIBS.Module.IPGuard
         public const bool DefaultDiagnosticMode = false;
         public const bool DefaultExcludeReservedRoutes = true;
         public const int DefaultThreshold = 6;
+        public const int DefaultBlockWindowHours = 1;
     }
 }

@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
-    <Version>1.0.7</Version>
+    <Version>1.0.9</Version>
     <Product>GIBS.Module.IPGuard</Product>
     <Authors>Joseph M Aucoin</Authors>
     <Company>GIBS</Company>
