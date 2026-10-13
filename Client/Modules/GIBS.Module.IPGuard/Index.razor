@@ -67,11 +67,15 @@ else
                         <th>IP Address</th>
                         <th>Requested URL</th>
                         <th>Attempt Date</th>
+                        <th style="width: 1px;">Block</th>
                     </Header>
                     <Row Context="attempt">
                         <td><a href="https://www.ipqualityscore.com/free-ip-lookup-proxy-vpn-test/lookup/@attempt.IpAddress" target="_blank">@attempt.IpAddress</a></td>
-                        <td>@attempt.RequestedUrl</td>
+                        <td style="max-width: 760px;">@attempt.RequestedUrl</td>
                         <td style="white-space: nowrap;">@attempt.AttemptDate.ToLocalTime().ToString("g")</td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-danger text-nowrap" @onclick="() => AddToBlocked(attempt.IpAddress)"><i class="oi oi-circle-x"></i></button>
+                        </td>
                     </Row>
                 </Pager>
             }
@@ -221,6 +225,27 @@ else
         {
             await logger.LogError(ex, "Error deleting error attempts {Error}", ex.Message);
             AddModuleMessage($"Error deleting 404 attempts: {ex.Message}", MessageType.Error);
+        }
+    }
+
+    private async Task AddToBlocked(string ipAddress)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(ipAddress))
+            {
+                AddModuleMessage("Unable to block an empty IP address.", MessageType.Warning);
+                return;
+            }
+
+            await ClientIPGuardService.AddToBlockedAsync(ipAddress, ModuleState.ModuleId);
+            await LoadData();
+            AddModuleMessage($"Added {ipAddress} to blocked IP addresses and removed its 404 attempts.", MessageType.Success);
+        }
+        catch (Exception ex)
+        {
+            await logger.LogError(ex, "Error adding IP address to blocked list {IpAddress} {Error}", ipAddress, ex.Message);
+            AddModuleMessage($"Error adding IP address to blocked list: {ex.Message}", MessageType.Error);
         }
     }
 

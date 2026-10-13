@@ -95,6 +95,20 @@ namespace GIBS.Module.IPGuard.Controllers
             }
         }
 
+        [HttpPost("attempts/block")]
+        [Authorize(Policy = PolicyNames.EditModule)]
+        public async Task<Models.BlockedIp> AddAttemptIpToBlocked(int moduleid, string ipAddress)
+        {
+            if (IsAuthorizedEntityId(EntityNames.Module, moduleid))
+            {
+                return await _IPGuardService.AddToBlockedAsync(ipAddress, moduleid);
+            }
+
+            _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized BlockedIp Add Attempt {IpAddress} {ModuleId}", ipAddress, moduleid);
+            HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
+            return null;
+        }
+
         [HttpPost]
         [Authorize(Policy = PolicyNames.EditModule)]
         public async Task<Models.BlockedIp> Post(int moduleid, [FromBody] Models.BlockedIp blockedIp)

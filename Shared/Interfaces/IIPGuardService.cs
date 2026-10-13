@@ -20,5 +20,7 @@ namespace GIBS.Module.IPGuard.Services
         Task DeleteAllErrorAttemptsAsync(int ModuleId);
 
         Task DeleteErrorAttemptsByIpAddressAsync(string ipAddress, int ModuleId);
+
+        Task<Models.BlockedIp> AddToBlockedAsync(string ipAddress, int ModuleId);
     }
 }

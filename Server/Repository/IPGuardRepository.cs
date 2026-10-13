@@ -19,6 +19,7 @@ namespace GIBS.Module.IPGuard.Repository
 		void DeleteAllErrorAttempts();
 		IEnumerable<Models.ErrorAttempt> GetErrorAttempts();
 		Models.ErrorAttempt AddErrorAttempt(Models.ErrorAttempt errorAttempt);
+		int GetErrorAttemptCount(string ipAddress);
 		int GetRecentErrorAttemptCount(string ipAddress, DateTime since);
 		bool IsBlocked(string ipAddress);
 	}
@@ -119,6 +120,12 @@ namespace GIBS.Module.IPGuard.Repository
 			db.ErrorAttempts.Add(errorAttempt);
 			db.SaveChanges();
 			return errorAttempt;
+		}
+
+		public int GetErrorAttemptCount(string ipAddress)
+		{
+			using var db = new IPGuardContext(_dbContextDependencies);
+			return db.ErrorAttempts.Count(item => item.IpAddress == ipAddress);
 		}
 
 		public int GetRecentErrorAttemptCount(string ipAddress, DateTime since)

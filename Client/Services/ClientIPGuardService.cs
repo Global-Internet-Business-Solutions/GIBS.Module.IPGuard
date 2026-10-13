@@ -55,5 +55,10 @@ namespace GIBS.Module.IPGuard.Services
         {
             await DeleteAsync(CreateAuthorizationPolicyUrl($"{Apiurl}/attempts/byip?moduleid={ModuleId}&ipAddress={Uri.EscapeDataString(ipAddress ?? string.Empty)}", EntityNames.Module, ModuleId));
         }
+
+        public async Task<Models.BlockedIp> AddToBlockedAsync(string ipAddress, int ModuleId)
+        {
+            return await PostJsonAsync<string, Models.BlockedIp>(CreateAuthorizationPolicyUrl($"{Apiurl}/attempts/block?moduleid={ModuleId}&ipAddress={Uri.EscapeDataString(ipAddress ?? string.Empty)}", EntityNames.Module, ModuleId), string.Empty);
+        }
     }
 }

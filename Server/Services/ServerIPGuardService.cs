@@ -181,6 +181,69 @@ namespace GIBS.Module.IPGuard.Services
             return Task.CompletedTask;
         }
 
+        public async Task<Models.BlockedIp> AddToBlockedAsync(string ipAddress, int ModuleId)
+        {
+            if (!IsAuthorized(ModuleId, PermissionNames.Edit))
+            {
+                _logger.Log(LogLevel.Error, this, LogFunction.Security, "Unauthorized BlockedIp Add Attempt {IpAddress} {ModuleId}", ipAddress, ModuleId);
+                return null;
+            }
+
+            var normalizedIpAddress = NormalizeIpAddress(ipAddress);
+            if (string.IsNullOrWhiteSpace(normalizedIpAddress))
+            {
+                throw new InvalidOperationException("An IP address is required.");
+            }
+
+            var blockedIp = _IPGuardRepository.GetBlockedIp(normalizedIpAddress);
+            var attemptCount = _IPGuardRepository.GetErrorAttemptCount(normalizedIpAddress);
+
+            if (blockedIp == null)
+            {
+                blockedIp = new Models.BlockedIp
+                {
+                    IpAddress = normalizedIpAddress,
+                    CountryLookup = await _geoLocationService.GetCountryAsync(normalizedIpAddress),
+                    ErrorCount = attemptCount,
+                    BlockedDate = DateTime.UtcNow,
+                    Reason = "Administrator manual block."
+                };
+
+                try
+                {
+                    blockedIp = _IPGuardRepository.AddBlockedIp(blockedIp);
+                    _logger.Log(LogLevel.Warning, this, LogFunction.Create, "Blocked IP {IpAddress} manually after {ErrorCount} recorded 404 attempts", normalizedIpAddress, attemptCount);
+                }
+                catch (DbUpdateException ex)
+                {
+                    var duplicateBlockedIp = _IPGuardRepository.GetBlockedIp(normalizedIpAddress);
+                    if (duplicateBlockedIp == null)
+                    {
+                        throw;
+                    }
+
+                    blockedIp = duplicateBlockedIp;
+                    _logger.Log(LogLevel.Information, this, LogFunction.Other, "Concurrent manual block detected for IP {IpAddress}", normalizedIpAddress);
+                }
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(blockedIp.CountryLookup) || blockedIp.CountryLookup == IpApiGeoLocationService.LookupError)
+                {
+                    blockedIp.CountryLookup = await _geoLocationService.GetCountryAsync(normalizedIpAddress);
+                }
+
+                blockedIp.ErrorCount = attemptCount;
+                blockedIp.BlockedDate = DateTime.UtcNow;
+                blockedIp.Reason = "Administrator manual block.";
+                blockedIp = _IPGuardRepository.UpdateBlockedIp(blockedIp);
+                _logger.Log(LogLevel.Warning, this, LogFunction.Update, "Updated blocked IP {IpAddress} manually after {ErrorCount} recorded 404 attempts", normalizedIpAddress, attemptCount);
+            }
+
+            _IPGuardRepository.DeleteErrorAttempts(normalizedIpAddress);
+            return blockedIp;
+        }
+
         public Task<bool> IsBlockedAsync(string ipAddress)
         {
             try
