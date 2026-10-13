@@ -5,7 +5,7 @@
     <Version>1.0.10</Version>
     <Authors>Joseph M Aucoin</Authors>
     <Company>GIBS</Company>
-    <Description>Automated IP blocking mechanism based on 404 errors</Description>
+    <Description>Automated IP blocking mechanism for Oqtane based on 404 errors</Description>
     <Product>GIBS.Module.IPGuard</Product>
     <Copyright>GIBS</Copyright>
     <AssemblyName>GIBS.Module.IPGuard.Client.Oqtane</AssemblyName>

@@ -6,7 +6,7 @@
         <authors>GIBS</authors>
         <owners>GIBS</owners>
         <title>IPGuard</title>
-        <description>Automated IP blocking mechanism based on 404 errors</description>
+        <description>Automated IP blocking mechanism for Oqtane based on 404 errors</description>
         <copyright>GIBS</copyright>
         <requireLicenseAcceptance>false</requireLicenseAcceptance>
         <license type="expression">MIT</license>
