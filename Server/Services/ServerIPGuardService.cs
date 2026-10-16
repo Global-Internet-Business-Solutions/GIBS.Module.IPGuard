@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using GIBS.Module.IPGuard.Repository;
 using Microsoft.AspNetCore.Http;
@@ -66,7 +67,9 @@ namespace GIBS.Module.IPGuard.Services
                     BlockedIp.BlockedDate = DateTime.UtcNow;
                 }
 
-                BlockedIp.IpAddress = NormalizeIpAddress(BlockedIp.IpAddress);
+                BlockedIp.IpAddress = TryNormalizeValidIpAddress(BlockedIp.IpAddress, out var normalizedIpAddress)
+                    ? normalizedIpAddress
+                    : throw new InvalidOperationException($"The IP address '{BlockedIp.IpAddress}' is not a valid IPv4 or IPv6 address.");
 
                 var existingBlockedIp = _IPGuardRepository.GetBlockedIp(BlockedIp.IpAddress);
                 if (existingBlockedIp != null)
@@ -103,7 +106,9 @@ namespace GIBS.Module.IPGuard.Services
         {
             if (IsAuthorized(ModuleId, PermissionNames.Edit))
             {
-                BlockedIp.IpAddress = NormalizeIpAddress(BlockedIp.IpAddress);
+                BlockedIp.IpAddress = TryNormalizeValidIpAddress(BlockedIp.IpAddress, out var normalizedIpAddress)
+                    ? normalizedIpAddress
+                    : throw new InvalidOperationException($"The IP address '{BlockedIp.IpAddress}' is not a valid IPv4 or IPv6 address.");
                 BlockedIp = _IPGuardRepository.UpdateBlockedIp(BlockedIp);
                 _logger.Log(LogLevel.Information, this, LogFunction.Update, "BlockedIp Updated {BlockedIp}", BlockedIp);
             }
@@ -166,8 +171,7 @@ namespace GIBS.Module.IPGuard.Services
         {
             if (IsAuthorized(ModuleId, PermissionNames.Edit))
             {
-                var normalizedIpAddress = NormalizeIpAddress(ipAddress);
-                if (!string.IsNullOrWhiteSpace(normalizedIpAddress))
+                if (TryNormalizeValidIpAddress(ipAddress, out var normalizedIpAddress))
                 {
                     _IPGuardRepository.DeleteErrorAttempts(normalizedIpAddress);
                     _logger.Log(LogLevel.Information, this, LogFunction.Delete, "Deleted error attempts for IP {IpAddress}", normalizedIpAddress);
@@ -189,10 +193,9 @@ namespace GIBS.Module.IPGuard.Services
                 return null;
             }
 
-            var normalizedIpAddress = NormalizeIpAddress(ipAddress);
-            if (string.IsNullOrWhiteSpace(normalizedIpAddress))
+            if (!TryNormalizeValidIpAddress(ipAddress, out var normalizedIpAddress))
             {
-                throw new InvalidOperationException("An IP address is required.");
+                throw new InvalidOperationException($"The IP address '{ipAddress}' is not a valid IPv4 or IPv6 address.");
             }
 
             var blockedIp = _IPGuardRepository.GetBlockedIp(normalizedIpAddress);
@@ -253,7 +256,11 @@ namespace GIBS.Module.IPGuard.Services
                     return Task.FromResult(false);
                 }
 
-                var normalizedIpAddress = NormalizeIpAddress(ipAddress);
+                if (!TryNormalizeValidIpAddress(ipAddress, out var normalizedIpAddress))
+                {
+                    return Task.FromResult(false);
+                }
+
                 if (IsAllowedIpAddress(normalizedIpAddress))
                 {
                     return Task.FromResult(false);
@@ -277,7 +284,11 @@ namespace GIBS.Module.IPGuard.Services
                     return;
                 }
 
-                var normalizedIpAddress = NormalizeIpAddress(ipAddress);
+                if (!TryNormalizeValidIpAddress(ipAddress, out var normalizedIpAddress))
+                {
+                    return;
+                }
+
                 if (_IPGuardRepository.IsBlocked(normalizedIpAddress))
                 {
                     _IPGuardRepository.DeleteErrorAttempts(normalizedIpAddress);
@@ -421,12 +432,45 @@ namespace GIBS.Module.IPGuard.Services
 
         private static string NormalizeIpAddress(string ipAddress)
         {
-            return ipAddress?.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(ipAddress))
+            {
+                return null;
+            }
+
+            var candidate = ipAddress.Trim();
+            return IPAddress.TryParse(candidate, out var parsedIpAddress)
+                ? NormalizeParsedIpAddress(parsedIpAddress)
+                : candidate.ToLowerInvariant();
+        }
+
+        private static bool TryNormalizeValidIpAddress(string ipAddress, out string normalizedIpAddress)
+        {
+            normalizedIpAddress = null;
+
+            if (string.IsNullOrWhiteSpace(ipAddress))
+            {
+                return false;
+            }
+
+            var candidate = ipAddress.Trim();
+            if (!IPAddress.TryParse(candidate, out var parsedIpAddress))
+            {
+                return false;
+            }
+
+            normalizedIpAddress = NormalizeParsedIpAddress(parsedIpAddress);
+            return true;
+        }
+
+        private static string NormalizeParsedIpAddress(IPAddress ipAddress)
+        {
+            var normalizedAddress = ipAddress.IsIPv4MappedToIPv6 ? ipAddress.MapToIPv4() : ipAddress;
+            return normalizedAddress.ToString().ToLowerInvariant();
         }
 
         private bool IsAllowedIpAddress(string ipAddress)
         {
-            if (string.IsNullOrWhiteSpace(ipAddress))
+            if (!TryNormalizeValidIpAddress(ipAddress, out var normalizedIpAddress))
             {
                 return false;
             }
@@ -437,11 +481,10 @@ namespace GIBS.Module.IPGuard.Services
                 return false;
             }
 
-            var normalizedIpAddress = NormalizeIpAddress(ipAddress);
-
             return allowedIpAddresses
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Any(allowedIpAddress => string.Equals(NormalizeIpAddress(allowedIpAddress), normalizedIpAddress, StringComparison.OrdinalIgnoreCase));
+                .Split(new[] { ',', ';', '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Any(allowedIpAddress => TryNormalizeValidIpAddress(allowedIpAddress, out var normalizedAllowedIpAddress)
+                    && string.Equals(normalizedAllowedIpAddress, normalizedIpAddress, StringComparison.OrdinalIgnoreCase));
         }
 
         private string GetSettingValue(string settingName, string legacySettingName, string defaultValue)

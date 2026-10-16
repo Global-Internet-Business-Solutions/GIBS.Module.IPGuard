@@ -139,9 +139,9 @@ namespace GIBS.Module.IPGuard.Middleware
             if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var forwardedFor))
             {
                 var forwardedIp = forwardedFor.FirstOrDefault()?.Split(',').FirstOrDefault()?.Trim();
-                if (!string.IsNullOrWhiteSpace(forwardedIp))
+                if (!string.IsNullOrWhiteSpace(forwardedIp) && IPAddress.TryParse(forwardedIp, out var parsedForwardedIp))
                 {
-                    return forwardedIp;
+                    return parsedForwardedIp.ToString();
                 }
             }
 

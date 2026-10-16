@@ -23,7 +23,7 @@ else
 
             @if (_blockedIps.Count > 0)
             {
-                <Pager Items="@_blockedIps" PageSize="10" Toolbar="Bottom" Class="table table-striped table-bordered align-middle" SearchProperties="IpAddress,CountryLookup">
+                <Pager Items="@_blockedIps" PageSize="10" Toolbar="Bottom" Class="table table-striped table-bordered align-middle" SearchProperties="IpAddress,CountryLookup,BlockedDate">
                     <Header>
                         <th>IP Address</th>
                         <th>Country Lookup</th>
@@ -62,7 +62,7 @@ else
                     <button type="button" class="btn btn-danger" @onclick="DeleteAllErrorAttempts">Delete All</button>
                 </div>
 
-                <Pager Items="@_errorAttempts" PageSize="50" Toolbar="Bottom" Class="table table-striped table-bordered align-middle" SearchProperties="IpAddress,RequestedUrl">
+                <Pager Items="@_errorAttempts" PageSize="50" Toolbar="Bottom" Class="table table-striped table-bordered align-middle" SearchProperties="IpAddress,RequestedUrl,AttemptDate">
                     <Header>
                         <th>IP Address</th>
                         <th>Requested URL</th>

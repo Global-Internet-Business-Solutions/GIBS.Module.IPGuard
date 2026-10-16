@@ -183,4 +183,4 @@ Each 404-attempt record stores:
 
 ## Version
 
-Current module version: `1.0.9`
+Current module version: `1.0.10`
